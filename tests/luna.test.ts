@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { disabledFeatures, generateLuna, generationArgs } from "../server/luna";
 import { MODEL } from "../shared/contracts";
 import { hasLanguageMismatch } from "../server/language";
+import type { Message } from "../server/context";
 
 describe("Luna invocation contract", () => {
   it("uses only Luna, stdin and isolated saved-auth CLI flags", () => {
@@ -82,6 +83,56 @@ describe("Luna invocation contract", () => {
           suggestionCharacters: text?.length ?? 0,
         }),
       );
+    },
+    75_000,
+  );
+});
+
+describe("follow-up usefulness", () => {
+  it.skipIf(process.env.FOLLOW_UP_LIVE !== "1").each([
+    {
+      name: "repository publication with URL, commit and remote verification already provided",
+      messages: [
+        { role: "user", text: "Create the public repository, commit and push it." },
+        {
+          role: "assistant",
+          text: "Created and pushed the public repository: https://github.com/example/demo-plugin. Branch: main, tracking origin/main. Commit: abc1234. GitHub's main matches the local commit, and the working tree is clean.",
+        },
+      ] satisfies Message[],
+    },
+    {
+      name: "a request for a URL and commit hash that the answer already supplies",
+      messages: [
+        { role: "user", text: "What is the repository URL and the latest commit hash?" },
+        {
+          role: "assistant",
+          text: "Repository URL: https://github.com/example/demo-plugin. Latest commit: abc1234.",
+        },
+      ] satisfies Message[],
+    },
+  ])(
+    "returns no suggestion after $name",
+    async ({ messages }) => {
+      expect(await generateLuna(messages, new AbortController().signal)).toBeNull();
+    },
+    75_000,
+  );
+
+  it.skipIf(process.env.FOLLOW_UP_LIVE !== "1")(
+    "still suggests a useful follow-up when the user's requested example is missing",
+    async () => {
+      const text = await generateLuna(
+        [
+          { role: "user", text: "Explain binary search, including a worked example on an array." },
+          {
+            role: "assistant",
+            text: "Binary search repeatedly halves a sorted search range. Compare the target with the middle element, then search the left or right half. Its time complexity is O(log n).",
+          },
+        ],
+        new AbortController().signal,
+      );
+      expect(text).not.toBeNull();
+      expect(text).toMatch(/example|walk|step|array/i);
     },
     75_000,
   );

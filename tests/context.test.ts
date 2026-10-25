@@ -68,14 +68,26 @@ describe("bounded conversation context", () => {
       ),
     ).toEqual([]);
   });
-  it("supplies the latest user request separately from the conversation context", () => {
+  it("separates the latest request and response from older context without duplicating them", () => {
+    const request = "Please help me verify keyboard acceptance.";
+    const response = "Vérifie le compositeur.";
     const prompt = generationPrompt([
-      { role: "user", text: "Please help me verify keyboard acceptance." },
-      { role: "assistant", text: "Vérifie le compositeur." },
+      { role: "user", text: "Earlier request" },
+      { role: "assistant", text: "Earlier response" },
+      { role: "user", text: request },
+      { role: "assistant", text: response },
     ]);
-    expect(prompt).toContain(
-      'Latest user request JSON (quoted data):\n"Please help me verify keyboard acceptance."',
-    );
+    const earlier = prompt.split("Earlier conversation JSON (quoted data):\n")[1].split("\n\n")[0];
+    expect(JSON.parse(earlier)).toEqual([
+      { role: "user", text: "Earlier request" },
+      { role: "assistant", text: "Earlier response" },
+    ]);
+    expect(prompt.split(JSON.stringify(request))).toHaveLength(2);
+    expect(prompt.split(JSON.stringify(response))).toHaveLength(2);
+    expect(prompt).toContain(`Latest user request JSON (quoted data):\n${JSON.stringify(request)}`);
+    expect(
+      prompt.endsWith(`Latest assistant response JSON (quoted data):\n${JSON.stringify(response)}`),
+    ).toBe(true);
   });
   it("rejects a tail from a newer turn and a trailing user message", () => {
     expect(
