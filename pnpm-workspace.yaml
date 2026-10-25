@@ -1,0 +1,15 @@
+catalog:
+  vite: npm:@voidzero-dev/vite-plus-core@1.3.0
+  vite-plus: 1.3.0
+minimumReleaseAgeExclude:
+  - "@getpaseo/client@0.13.0"
+  - "@getpaseo/plugin@0.13.0"
+  - "@getpaseo/protocol@0.13.0"
+  - "@getpaseo/relay@0.13.0"
+overrides:
+  vite@*: "catalog:"
+peerDependencyRules:
+  allowAny:
+    - vite
+  allowedVersions:
+    vite: "*"

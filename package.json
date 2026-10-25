@@ -1,0 +1,40 @@
+{
+  "name": "paseo-follow-up",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Context-aware follow-up suggestions for Paseo Max",
+  "files": [
+    "paseo-plugin.json",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "server/",
+    "shared/",
+    "README.md"
+  ],
+  "type": "module",
+  "scripts": {
+    "check": "vp fmt --check --threads=4 && vp lint --threads=4",
+    "lint": "vp lint --threads=4",
+    "fmt": "vp fmt --threads=4",
+    "typecheck": "vp lint --type-check-only --threads=4",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "tinyld": "^1.3.4",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@getpaseo/client": "0.13.0",
+    "@getpaseo/plugin": "0.13.0",
+    "@types/node": "^22.20.5",
+    "@types/react": "~19.2.0",
+    "@types/react-test-renderer": "^19.3.0",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "react-test-renderer": "19.1.0",
+    "typescript": "^5.9.3",
+    "vite-plus": "catalog:"
+  },
+  "packageManager": "pnpm@12.14.0"
+}
