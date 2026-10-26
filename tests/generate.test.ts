@@ -1,13 +1,16 @@
 import { describe, expect, it } from "vite-plus/test";
-import { disabledFeatures, generateLuna, generationArgs } from "../server/luna";
-import { MODEL } from "../shared/contracts";
+import { disabledFeatures, generateSuggestion, generationArgs } from "../server/generate";
+import { DEFAULT_MODEL } from "../shared/contracts";
 import { hasLanguageMismatch } from "../server/language";
 import type { Message } from "../server/context";
 
-describe("Luna invocation contract", () => {
-  it("uses only Luna, stdin and isolated saved-auth CLI flags", () => {
+describe("Suggestion invocation contract", () => {
+  it("uses only the configured small model, stdin and isolated saved-auth CLI flags", () => {
     const args = generationArgs("/tmp/follow-up-test");
-    expect(args).toContain(MODEL);
+    expect(DEFAULT_MODEL).toBe("gpt-6.1-terra");
+    expect(args[args.indexOf("--model") + 1]).toBe("gpt-6.1-terra");
+    expect(args).toContain('model_reasoning_effort="low"');
+    expect(args).toContain(DEFAULT_MODEL);
     expect(args).toContain("--ephemeral");
     expect(args).toContain("--ignore-user-config");
     expect(args).toContain("--ignore-rules");
@@ -26,10 +29,20 @@ describe("Luna invocation contract", () => {
     );
     expect(args.join(" ")).not.toMatch(/api.key|auth.json|dangerously/);
   });
+  it("passes the selected model and thinking level without adding default overrides", () => {
+    const args = generationArgs("/tmp/follow-up-test", {
+      model: "gpt-6-luna",
+      reasoningEffort: "high",
+    });
+    expect(args[args.indexOf("--model") + 1]).toBe("gpt-6-luna");
+    expect(args).toContain('model_reasoning_effort="high"');
+    expect(args).not.toContain('model_reasoning_effort="low"');
+    expect(args).not.toContain(DEFAULT_MODEL);
+  });
   it.skipIf(process.env.FOLLOW_UP_LIVE !== "1")(
     "returns English or no suggestion for a real English request with French context",
     async () => {
-      const text = await generateLuna(
+      const text = await generateSuggestion(
         [
           {
             role: "user",
@@ -48,7 +61,7 @@ describe("Luna invocation contract", () => {
       ).toBe(true);
       console.info(
         JSON.stringify({
-          model: MODEL,
+          model: DEFAULT_MODEL,
           toolFreeProbe: "passed",
           suggestionCharacters: text?.length ?? 0,
         }),
@@ -59,7 +72,7 @@ describe("Luna invocation contract", () => {
   it.skipIf(process.env.FOLLOW_UP_LIVE !== "1")(
     "accepts a valid real result for a request with weak language scores",
     async () => {
-      const text = await generateLuna(
+      const text = await generateSuggestion(
         [
           { role: "user", text: "remove the notes about the settings at the end" },
           {
@@ -69,7 +82,7 @@ describe("Luna invocation contract", () => {
         ],
         new AbortController().signal,
       );
-      // Luna is allowed to decide that a completed edit needs no follow-up. The mocked
+      // The model is allowed to decide that a completed edit needs no follow-up. The mocked
       // generation test separately proves weak language scores do not skip the model call.
       expect(text?.length ?? 0).toBeLessThanOrEqual(240);
       if (text !== null) {
@@ -78,7 +91,7 @@ describe("Luna invocation contract", () => {
       }
       console.info(
         JSON.stringify({
-          model: MODEL,
+          model: DEFAULT_MODEL,
           toolFreeProbe: "passed",
           suggestionCharacters: text?.length ?? 0,
         }),
@@ -113,7 +126,7 @@ describe("follow-up usefulness", () => {
   ])(
     "returns no suggestion after $name",
     async ({ messages }) => {
-      expect(await generateLuna(messages, new AbortController().signal)).toBeNull();
+      expect(await generateSuggestion(messages, new AbortController().signal)).toBeNull();
     },
     75_000,
   );
@@ -121,7 +134,7 @@ describe("follow-up usefulness", () => {
   it.skipIf(process.env.FOLLOW_UP_LIVE !== "1")(
     "still suggests a useful follow-up when the user's requested example is missing",
     async () => {
-      const text = await generateLuna(
+      const text = await generateSuggestion(
         [
           { role: "user", text: "Explain binary search, including a worked example on an array." },
           {

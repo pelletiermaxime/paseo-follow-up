@@ -39,7 +39,8 @@ export async function runCommand(
     child.on("close", (code) => {
       clearTimeout(timer);
       signal.removeEventListener("abort", stop);
-      if (failed || code !== 0 || signal.aborted) reject(new Error("Luna generation unavailable"));
+      if (failed || code !== 0 || signal.aborted)
+        reject(new Error("Suggestion generation unavailable"));
       else resolve();
     });
   });

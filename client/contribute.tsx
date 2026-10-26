@@ -79,7 +79,7 @@ export function contributeClient(client: PluginClientContext): () => void {
       <Text
         accessibilityLabel={
           unavailable
-            ? "Luna unavailable. Check Codex access in Follow-up settings."
+            ? "Small model unavailable. Check Codex access in Follow-up settings."
             : "Follow-up settings"
         }
         style={{

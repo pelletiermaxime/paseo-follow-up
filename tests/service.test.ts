@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import type { Message } from "../server/context";
 import { FollowUpService } from "../server/service";
-import { agent, api, deferred, flush } from "./helpers";
+import { DEFAULT_GENERATION_SETTINGS } from "../shared/contracts";
+import { agent, api, deferred, entry, flush } from "./helpers";
 const services: FollowUpService[] = [];
 afterEach(() => {
   services.splice(0).forEach((s) => s.dispose());
@@ -18,6 +19,52 @@ function setup(
   return { service, generate, ...api() };
 }
 describe("daemon demand and completion coordination", () => {
+  it("cancels old selections without regenerating their turn and uses new settings for new replies", async () => {
+    const pending = deferred<string>();
+    const generate = vi
+      .fn()
+      .mockReturnValueOnce(pending.promise)
+      .mockResolvedValue("New selection");
+    const { service, paseo, refetch } = setup(generate);
+    await service.demand("agent-1", "window", paseo);
+    service.completed("agent-1", "turn-1", paseo);
+    await flush();
+    const signal = generate.mock.calls[0][1] as AbortSignal;
+    expect(generate.mock.calls[0][2]).toEqual(DEFAULT_GENERATION_SETTINGS);
+    service.configure({ enabled: true, model: "gpt-6-luna", reasoningEffort: "medium" });
+    expect(signal.aborted).toBe(true);
+    pending.resolve("Obsolete result");
+    await flush();
+    await service.demand("agent-1", "window", paseo);
+    service.completed("agent-1", "turn-1", paseo);
+    await flush();
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect((await service.demand("agent-1", "window", paseo)).status).toBe("none");
+    refetch.mockResolvedValue({
+      entries: [
+        entry("user_message", "Explain this change", 1, "turn-2"),
+        entry("assistant_message", "The change makes requests cancelable.", 2, "turn-2"),
+      ],
+    });
+    service.completed("agent-1", "turn-2", paseo);
+    await flush();
+    expect(generate).toHaveBeenCalledTimes(2);
+    expect(generate.mock.calls[1][2]).toEqual({ model: "gpt-6-luna", reasoningEffort: "medium" });
+  });
+
+  it("keeps pending generation when only an unchanged settings snapshot arrives", async () => {
+    const pending = deferred<string>();
+    const generate = vi.fn().mockReturnValue(pending.promise);
+    const { service, paseo } = setup(generate);
+    await service.demand("agent-1", "window", paseo);
+    service.completed("agent-1", "turn-1", paseo);
+    await flush();
+    service.configure({ enabled: true, ...DEFAULT_GENERATION_SETTINGS });
+    expect((generate.mock.calls[0][1] as AbortSignal).aborted).toBe(false);
+    pending.resolve("Still current");
+    await flush();
+    expect((await service.demand("agent-1", "window", paseo)).status).toBe("ready");
+  });
   it("waits for the completed foreground turn to become idle before generating", async () => {
     const { service, generate, paseo, refresh } = setup();
     refresh.mockResolvedValue({

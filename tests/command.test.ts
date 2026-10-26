@@ -45,7 +45,7 @@ describe("bounded Codex subprocess", () => {
     expect(process.stdin.writableEnded).toBe(true);
     process.stderr.write("private raw provider error");
     process.emit("close", 1);
-    await expect(result).rejects.toThrow("Luna generation unavailable");
+    await expect(result).rejects.toThrow("Suggestion generation unavailable");
     await expect(result).rejects.not.toThrow("private raw provider error");
   });
   it("kills the subprocess on cancellation", async () => {
@@ -87,7 +87,7 @@ describe("bounded Codex subprocess", () => {
     process.stderr.write(Buffer.alloc(128_001));
     controller.abort();
     process.emit("close", null);
-    await expect(result).rejects.toThrow("Luna generation unavailable");
+    await expect(result).rejects.toThrow("Suggestion generation unavailable");
     expect(terminateProcess).toHaveBeenCalledOnce();
   });
 });

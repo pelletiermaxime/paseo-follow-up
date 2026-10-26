@@ -1,15 +1,33 @@
 import { defineRpc, defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 
-export const MODEL = "gpt-6-luna";
+export const DEFAULT_MODEL = "gpt-6.1-terra";
+export const REASONING_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export const generationSettingsSchema = z.object({
+  model: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .regex(/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/)
+    .default(DEFAULT_MODEL),
+  reasoningEffort: z.enum(REASONING_EFFORTS).default("low"),
+});
+export type GenerationSettings = z.output<typeof generationSettingsSchema>;
+export const DEFAULT_GENERATION_SETTINGS: GenerationSettings = generationSettingsSchema.parse({});
+export const followUpSettingsSchema = generationSettingsSchema
+  .extend({ enabled: z.boolean().default(true) })
+  .default({ enabled: true, ...DEFAULT_GENERATION_SETTINGS });
+export type FollowUpValues = z.output<typeof followUpSettingsSchema>;
 export const SETTINGS_SCREEN = "follow-up";
 export const POLL_MS = 3_000;
 export const LEASE_MS = 12_000;
 export const followUpSettings = defineSettings({
   id: "suggestions",
   scope: "host",
-  version: 1,
-  schema: z.object({ enabled: z.boolean().default(true) }).default({ enabled: true }),
+  version: 2,
+  schema: followUpSettingsSchema,
+  migrate: (values) => followUpSettingsSchema.parse(values),
 });
 const identity = z.object({
   agentId: z.string().min(1).max(200),

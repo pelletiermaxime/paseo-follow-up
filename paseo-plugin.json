@@ -1,7 +1,7 @@
 {
   "id": "follow-up",
   "name": "Follow-up",
-  "description": "Context-aware next-message suggestions using Luna.",
+  "description": "Context-aware next-message suggestions using a small model.",
   "requirements": {
     "paseo": ">=0.13.0"
   }

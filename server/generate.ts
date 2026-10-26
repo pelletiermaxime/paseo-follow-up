@@ -4,7 +4,12 @@ import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { z } from "zod";
-import { MODEL } from "../shared/contracts";
+import {
+  DEFAULT_GENERATION_SETTINGS,
+  DEFAULT_MODEL,
+  generationSettingsSchema,
+  type GenerationSettings,
+} from "../shared/contracts";
 import { generationPrompt, type Message } from "./context";
 import { runCommand } from "./command";
 import { detectLanguage, hasLanguageMismatch } from "./language";
@@ -36,7 +41,11 @@ export const disabledFeatures = [
   "hooks",
   "runtime_agent_instances",
 ];
-export function generationArgs(directory: string): string[] {
+export function generationArgs(
+  directory: string,
+  selection: GenerationSettings = DEFAULT_GENERATION_SETTINGS,
+): string[] {
+  const settings = generationSettingsSchema.parse(selection);
   const config = [
     'web_search="disabled"',
     "tools.update_plan.enabled=false",
@@ -44,7 +53,7 @@ export function generationArgs(directory: string): string[] {
     "agents.enabled=false",
     "project_doc_max_bytes=0",
     'history.persistence="none"',
-    'model_reasoning_effort="low"',
+    `model_reasoning_effort=${JSON.stringify(settings.reasoningEffort)}`,
     "analytics.enabled=false",
     "feedback.enabled=false",
     `log_dir=${JSON.stringify(directory)}`,
@@ -62,7 +71,7 @@ export function generationArgs(directory: string): string[] {
     "--sandbox",
     "read-only",
     "--model",
-    MODEL,
+    settings.model,
     ...disabledFeatures.flatMap((f) => ["--disable", f]),
     ...config.flatMap((c) => ["-c", c]),
   ];
@@ -74,6 +83,7 @@ export async function verifyToolFree(
   args: string[],
   directory: string,
   signal: AbortSignal,
+  expectedModel: string = DEFAULT_MODEL,
 ): Promise<void> {
   let verified = false;
   let unsafe = false;
@@ -95,7 +105,7 @@ export async function verifyToolFree(
           ).toString(),
         );
         if (
-          body.model !== MODEL ||
+          body.model !== expectedModel ||
           (body.tools !== undefined && (!Array.isArray(body.tools) || body.tools.length !== 0))
         )
           unsafe = true;
@@ -128,22 +138,24 @@ export async function verifyToolFree(
       signal,
     ).catch(() => {});
     if (!verified || unsafe || signal.aborted)
-      throw new Error("Tool-free Luna invocation unavailable");
+      throw new Error("Tool-free suggestion invocation unavailable");
   } finally {
     server.closeAllConnections();
     await new Promise<void>((resolve) => server.close(() => resolve()));
   }
 }
 const resultSchema = z.object({ text: z.string().max(240) }).strict();
-export async function generateLuna(
+export async function generateSuggestion(
   messages: Message[],
   signal: AbortSignal,
+  selection: GenerationSettings = DEFAULT_GENERATION_SETTINGS,
 ): Promise<string | null> {
   const latestUserRequest = messages.findLast((message) => message.role === "user")?.text ?? "";
   if (!latestUserRequest.trim()) return null;
   const directory = await mkdtemp(join(tmpdir(), "paseo-follow-up-"));
   let stage = "catalogue";
   try {
+    const settings = generationSettingsSchema.parse(selection);
     // Freeze the exact local model contract for both probe and generation. No fallback model.
     const cachePath = join(
       process.env.CODEX_HOME ?? join(homedir(), ".codex"),
@@ -151,14 +163,20 @@ export async function generateLuna(
     );
     if ((await stat(cachePath)).size > 4_000_000) throw new Error("Model catalogue too large");
     const cache = JSON.parse(await readFile(cachePath, "utf8"));
-    const model = cache.models?.find((entry: { slug?: string }) => entry.slug === MODEL);
-    if (!model) throw new Error("Luna unavailable");
+    const model = cache.models?.find((entry: { slug?: string }) => entry.slug === settings.model);
+    if (!model) throw new Error("Small model unavailable");
+    if (
+      !model.supported_reasoning_levels?.some(
+        (level: { effort?: string }) => level.effort === settings.reasoningEffort,
+      )
+    )
+      throw new Error("Thinking level unavailable");
     await writeFile(join(directory, "models.json"), JSON.stringify({ models: [model] }), {
       mode: 0o600,
     });
-    const args = generationArgs(directory);
+    const args = generationArgs(directory, settings);
     stage = "preflight";
-    await verifyToolFree(args, directory, signal);
+    await verifyToolFree(args, directory, signal, settings.model);
     const schema = join(directory, "schema.json");
     const output = join(directory, "result.json");
     await writeFile(
@@ -195,7 +213,7 @@ export async function generateLuna(
   } catch {
     trace("model-failed", { stage, canceled: signal.aborted });
     throw new Error(
-      "Luna generation unavailable. Check Codex login, gpt-6-luna access and CLI compatibility on this host.",
+      "Suggestion generation unavailable. Check Codex login, small model access and CLI compatibility on this host.",
     );
   } finally {
     await rm(directory, { recursive: true, force: true });

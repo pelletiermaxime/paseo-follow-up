@@ -1,5 +1,11 @@
 import type { PaseoApi } from "@getpaseo/client";
-import { LEASE_MS, type Suggestion } from "../shared/contracts";
+import {
+  DEFAULT_GENERATION_SETTINGS,
+  LEASE_MS,
+  type FollowUpValues,
+  type GenerationSettings,
+  type Suggestion,
+} from "../shared/contracts";
 import { eligible, type Message } from "./context";
 import { readContext } from "./history";
 import { trace } from "./diagnostics";
@@ -29,13 +35,31 @@ export class FollowUpService {
   private running = false;
   private enabled = false;
   private disposed = false;
+  private generationSettings: GenerationSettings = { ...DEFAULT_GENERATION_SETTINGS };
   private timer: ReturnType<typeof setInterval>;
   constructor(
-    private readonly generate: (messages: Message[], signal: AbortSignal) => Promise<string | null>,
+    private readonly generate: (
+      messages: Message[],
+      signal: AbortSignal,
+      settings: GenerationSettings,
+    ) => Promise<string | null>,
     private readonly now = Date.now,
   ) {
     this.timer = setInterval(() => this.sweep(), 3_000);
     this.timer.unref?.();
+  }
+  configure(settings: FollowUpValues) {
+    if (
+      settings.model !== this.generationSettings.model ||
+      settings.reasoningEffort !== this.generationSettings.reasoningEffort
+    ) {
+      this.setEnabled(false);
+      this.generationSettings = {
+        model: settings.model,
+        reasoningEffort: settings.reasoningEffort,
+      };
+    }
+    this.setEnabled(settings.enabled);
   }
   setEnabled(enabled: boolean) {
     this.enabled = enabled && !this.disposed;
@@ -194,7 +218,11 @@ export class FollowUpService {
           return;
         }
         this.phase(agentId, completion, "generating");
-        const text = await this.generate(messages, completion.controller!.signal);
+        const text = await this.generate(
+          messages,
+          completion.controller!.signal,
+          this.generationSettings,
+        );
         if (!this.valid(agentId, completion)) return;
         const after = (await handle.refresh())?.agent;
         if (

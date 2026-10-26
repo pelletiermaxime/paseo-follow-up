@@ -1,6 +1,90 @@
-import { useSettings, type PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { Pressable, ScrollView, Text } from "react-native";
-import { followUpSettings, MODEL } from "../shared/contracts";
+import { useState } from "react";
+import { useSettings, type PluginSurfaceProps, type SettingsState } from "@getpaseo/plugin/client";
+import { Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import {
+  DEFAULT_MODEL,
+  REASONING_EFFORTS,
+  followUpSettings,
+  generationSettingsSchema,
+} from "../shared/contracts";
+
+type ReadySettings = Extract<SettingsState<typeof followUpSettings.schema>, { status: "ready" }>;
+
+function ModelSettings({
+  settings,
+  theme,
+}: {
+  settings: ReadySettings;
+  theme: PluginSurfaceProps["theme"];
+}) {
+  const [model, setModel] = useState(settings.values.model);
+  const [reasoningEffort, setReasoningEffort] = useState(settings.values.reasoningEffort);
+  const parsed = generationSettingsSchema.safeParse({ model, reasoningEffort });
+  const changed =
+    model.trim() !== settings.values.model || reasoningEffort !== settings.values.reasoningEffort;
+  return (
+    <View style={{ gap: 12 }}>
+      <Text style={{ color: theme.colors.foreground }}>Model name</Text>
+      <TextInput
+        accessibilityLabel="Model name"
+        value={model}
+        placeholder={DEFAULT_MODEL}
+        autoCapitalize="none"
+        autoCorrect={false}
+        editable={!settings.saving}
+        onChangeText={setModel}
+        style={{
+          color: theme.colors.foreground,
+          borderColor: theme.colors.foreground,
+          borderWidth: 1,
+          borderRadius: 6,
+          padding: 8,
+        }}
+      />
+      <Text style={{ color: theme.colors.foreground }}>Thinking level</Text>
+      <View
+        accessibilityRole="radiogroup"
+        style={{ flexDirection: "row", flexWrap: "wrap", gap: 12 }}
+      >
+        {REASONING_EFFORTS.map((effort) => (
+          <Pressable
+            key={effort}
+            accessibilityRole="radio"
+            accessibilityLabel={`${effort} thinking`}
+            accessibilityState={{ checked: reasoningEffort === effort, disabled: settings.saving }}
+            disabled={settings.saving}
+            onPress={() => setReasoningEffort(effort)}
+          >
+            <Text style={{ color: theme.colors.foreground }}>
+              {reasoningEffort === effort ? "●" : "○"} {effort}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+      {!parsed.success && (
+        <Text style={{ color: theme.colors.foreground }}>Enter a model ID without spaces.</Text>
+      )}
+      <Text style={{ color: theme.colors.foreground }}>
+        The model and thinking level must be supported by this host's Codex model catalogue. Changes
+        apply to new replies; no alternative model or thinking level is used.
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Save model settings"
+        disabled={settings.saving || !parsed.success || !changed}
+        accessibilityState={{ disabled: settings.saving || !parsed.success || !changed }}
+        onPress={() => {
+          if (parsed.success)
+            void settings.save({ ...settings.values, ...parsed.data }, settings.revision);
+        }}
+      >
+        <Text style={{ color: theme.colors.foreground }}>
+          {settings.saving ? "Saving…" : "Save model settings"}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
 
 export function SettingsScreen(props: PluginSurfaceProps & { supported: boolean }) {
   const settings = useSettings(followUpSettings);
@@ -13,9 +97,10 @@ export function SettingsScreen(props: PluginSurfaceProps & { supported: boolean 
         Follow-up suggestions
       </Text>
       <Text style={{ color: props.theme.colors.foreground }}>
-        Settings apply to {props.host.label}. When enabled, open agent chats can make extra {MODEL}{" "}
-        calls using this host's saved Codex login. Each completed turn is attempted once, with at
-        most eight recent text messages (12,000 characters). No tools or automatic submission.
+        Settings apply to {props.host.label}. When enabled, open agent chats can make extra calls to
+        a small model using this host's saved Codex login. Each completed turn is attempted once,
+        with at most eight recent text messages (12,000 characters). No tools or automatic
+        submission.
       </Text>
       {!props.supported && (
         <Text style={{ color: props.theme.colors.foreground }}>
@@ -24,12 +109,18 @@ export function SettingsScreen(props: PluginSurfaceProps & { supported: boolean 
         </Text>
       )}
       {settings.status === "ready" && (
+        <ModelSettings key={settings.revision} settings={settings} theme={props.theme} />
+      )}
+      {settings.status === "ready" && (
         <Pressable
           accessibilityRole="switch"
           accessibilityState={{ checked: settings.values.enabled, disabled: settings.saving }}
           disabled={settings.saving}
           onPress={() =>
-            void settings.save({ enabled: !settings.values.enabled }, settings.revision)
+            void settings.save(
+              { ...settings.values, enabled: !settings.values.enabled },
+              settings.revision,
+            )
           }
         >
           <Text style={{ color: props.theme.colors.foreground }}>
@@ -65,8 +156,8 @@ export function SettingsScreen(props: PluginSurfaceProps & { supported: boolean 
         </Text>
       )}
       <Text style={{ color: props.theme.colors.foreground }}>
-        If Luna is unavailable, check the saved Codex login, gpt-6-luna access and the local model
-        catalogue on this host. The CLI must support the isolated tool-free invocation; no
+        If the small model is unavailable, check the saved Codex login, model access and the local
+        model catalogue on this host. The CLI must support the isolated tool-free invocation; no
         alternative model is used.
       </Text>
       <Text style={{ color: props.theme.colors.foreground }}>

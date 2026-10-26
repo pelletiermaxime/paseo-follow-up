@@ -1,20 +1,22 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { demandRpc, deliveryRpc, followUpSettings, releaseRpc } from "./shared/contracts";
-import { generateLuna } from "./server/luna";
+import { generateSuggestion } from "./server/generate";
 import { FollowUpService } from "./server/service";
 import { trace } from "./server/diagnostics";
 
 // Paseo eagerly copies bundle exports; a hoisted function keeps the default available.
 export default function contribute(server: PluginServerContext) {
-  const service = new FollowUpService(generateLuna);
+  const service = new FollowUpService(generateSuggestion);
   const settings = server.registerSettings(followUpSettings);
   let settingsEpoch = 0;
   const readEpoch = settingsEpoch;
   void settings
     .read()
     .then((state) => {
-      if (settingsEpoch === readEpoch)
-        service.setEnabled(state.status === "ready" && state.values.enabled);
+      if (settingsEpoch === readEpoch) {
+        if (state.status === "ready") service.configure(state.values);
+        else service.setEnabled(false);
+      }
     })
     .catch(() => {
       if (settingsEpoch === readEpoch) service.setEnabled(false);
@@ -22,7 +24,8 @@ export default function contribute(server: PluginServerContext) {
   const cleanup = [
     settings.subscribe((state) => {
       settingsEpoch++;
-      service.setEnabled(state.status === "ready" && state.values.enabled);
+      if (state.status === "ready") service.configure(state.values);
+      else service.setEnabled(false);
     }),
   ];
   cleanup.push(
